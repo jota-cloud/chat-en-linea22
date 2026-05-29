@@ -1,3 +1,4 @@
+import os
 from flask import Flask, send_file
 from flask_socketio import SocketIO, send
 
@@ -15,10 +16,5 @@ def handle_message(msg):
     send(msg, broadcast=True)
 
 if __name__ == "__main__":
-    socketio.run(
-        app,
-        host="127.0.0.1",
-        port=5000,
-        debug=True,
-        allow_unsafe_werkzeug=True
-    )
+    port = int(os.environ.get("PORT", 5000))
+    socketio.run(app, host="0.0.0.0", port=port, debug=False)
