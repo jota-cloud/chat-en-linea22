@@ -201,7 +201,7 @@ HTML = """
 <body>
 
     <div class="chat-container">
-        <div class="chat-header">💬 Chatroom</div>
+        <div class="chat-header">💬 Chatroom Pro</div>
         
         <div id="welcomeScreen" class="welcome-screen">
             <h3>¿Cuál es tu nombre?</h3>
@@ -278,7 +278,7 @@ def index():
 
 @socketio.on("message")
 def handle_message(msg):
-    print(f"Mensaje: {msg}")
+    print("Mensaje:", msg)
     send(msg, broadcast=True)
 
 if __name__ == "__main__":
