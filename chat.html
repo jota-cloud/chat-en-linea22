@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatroom Pro</title>
+    <style>
+        :root {
+            --bg-main: #0b141a;
+            --bg-panel: #202c33;
+            --bg-input: #2a3942;
+            --accent: #00f2ff;
+            --text-white: #e9edef;
+            --msg-sent: #005c4b;
+        }
+
+        body { 
+            margin: 0; 
+            font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; 
+            background: var(--bg-main); 
+            color: var(--text-white);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .chat-container { 
+            width: 100%;
+            max-width: 450px; 
+            height: 90vh; 
+            display: flex; 
+            flex-direction: column; 
+            border-radius: 12px; 
+            overflow: hidden; 
+            background: var(--bg-main); 
+            border: 1px solid rgba(0, 242, 255, 0.25); 
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        .chat-header { 
+            background: var(--bg-panel); 
+            padding: 18px; 
+            text-align: center; 
+            font-weight: 600; 
+            color: var(--accent);
+            font-size: 1.1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .welcome-screen {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            flex: 1;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .welcome-screen p {
+            color: #8696a0;
+            margin-bottom: 24px;
+        }
+
+        .ux-input {
+            width: 100%;
+            max-width: 280px;
+            padding: 14px;
+            border-radius: 8px;
+            border: 1px solid var(--bg-input);
+            background: var(--bg-input);
+            color: white;
+            outline: none;
+            font-size: 1rem;
+            text-align: center;
+            transition: border 0.3s;
+        }
+
+        .ux-input:focus {
+            border-color: var(--accent);
+        }
+
+        .ux-btn {
+            width: 100%;
+            max-width: 280px;
+            margin-top: 15px;
+            padding: 14px;
+            border-radius: 8px;
+            border: none;
+            background: var(--accent);
+            color: #000;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+
+        .ux-btn:active {
+            transform: scale(0.98);
+        }
+
+        .chat-view {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .chat-messages { 
+            flex: 1; 
+            padding: 20px; 
+            overflow-y: auto; 
+            background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); 
+            background-blend-mode: overlay;
+            display: flex; 
+            flex-direction: column; 
+        }
+
+        .message { 
+            max-width: 75%; 
+            padding: 9px 14px; 
+            margin: 6px 0; 
+            border-radius: 12px; 
+            word-wrap: break-word; 
+            font-size: 0.95rem;
+            line-height: 1.4;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.2);
+        }
+
+        .sent { 
+            background: var(--msg-sent); 
+            align-self: flex-end; 
+            border-top-right-radius: 2px;
+        }
+
+        .received { 
+            background: var(--bg-panel); 
+            align-self: flex-start; 
+            border-top-left-radius: 2px;
+        }
+
+        .chat-input-area { 
+            display: flex; 
+            padding: 12px; 
+            background: var(--bg-panel); 
+            align-items: center;
+            gap: 10px;
+        }
+
+        .chat-input-area input { 
+            flex: 1; 
+            padding: 12px 16px; 
+            border-radius: 24px; 
+            border: none; 
+            background: var(--bg-input); 
+            color: white; 
+            outline: none; 
+            font-size: 0.95rem;
+        }
+
+        .send-btn { 
+            background: var(--accent);
+            border: none;
+            color: #000;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .send-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+            margin-left: 2px; 
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: rgba(0, 242, 255, 0.2); border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="chat-container">
+        <div class="chat-header">💬 Chatroom</div>
+        
+        <div id="welcomeScreen" class="welcome-screen">
+            <h3>¿Cuál es tu nombre?</h3>
+            <p>Ingresa un apodo para empezar a chatear</p>
+            <input type="text" id="nombre" class="ux-input" placeholder="Ingresa tu nombre o un apodo" autofocus onkeypress="if(event.key === 'Enter') ingresarAlChat()">
+            <button class="ux-btn" onclick="ingresarAlChat()">Continuar</button>
+        </div>
+
+        <div id="chatView" class="chat-view">
+            <div id="chat" class="chat-messages"></div>
+
+            <div class="chat-input-area">
+                <input type="text" id="mensaje" placeholder="Escribe un mensaje..." onkeypress="if(event.key === 'Enter') enviar()">
+                <button class="send-btn" onclick="enviar()" aria-label="Enviar mensaje">
+                    <svg viewBox="0 0 24 24"><path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        var socket = io();
+        var miNombre = "";
+
+        function ingresarAlChat() {
+            var nombreInput = document.getElementById("nombre");
+            miNombre = nombreInput.value.trim();
+
+            if (miNombre === "") {
+                nombreInput.style.border = "1px solid red"; 
+                nombreInput.placeholder = "¡El nombre es obligatorio!";
+                return;
+            }
+
+            document.getElementById("welcomeScreen").style.display = "none";
+            document.getElementById("chatView").style.display = "flex";
+            document.getElementById("mensaje").focus();
+        }
+
+        function enviar() {
+            var mensajeInput = document.getElementById("mensaje");
+            var mensaje = mensajeInput.value.trim();
+
+            if (mensaje === "") return; 
+            socket.emit("message", miNombre + ": " + mensaje);
+            mensajeInput.value = "";
+        }
+
+        socket.on("message", function (msg) {
+            var chat = document.getElementById("chat");
+            var div = document.createElement("div");
+            div.classList.add("message");
+            
+            if (msg.startsWith(miNombre + ":")) {
+                div.classList.add("sent");
+                div.innerText = msg.replace(miNombre + ":", "Tú:");
+            } else {
+                div.classList.add("received");
+                div.innerText = msg;
+            }
+
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight; 
+        });
+    </script>
+</body>
+</html>
