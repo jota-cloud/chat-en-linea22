@@ -368,7 +368,11 @@ async def botones(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================
 
 def run_telegram():
+    import asyncio
     try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
         application = Application.builder().token(TOKEN).build()
 
         application.add_handler(CommandHandler("start", start))
@@ -380,8 +384,14 @@ def run_telegram():
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, manejar_mensaje_telegram))
         application.add_handler(CallbackQueryHandler(botones))
 
-        print("🤖 Bot de Telegram iniciando...")
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        async def main():
+            async with application:
+                await application.start()
+                await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+                print("🤖 Bot de Telegram iniciando...")
+                await asyncio.Event().wait()  # Mantiene el bot corriendo
+
+        loop.run_until_complete(main())
     except Exception as e:
         print(f"❌ Error en Telegram: {e}")
 
