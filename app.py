@@ -1,23 +1,23 @@
 from flask import Flask, render_template_string
 from flask_socketio import SocketIO, send
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import os
 import threading
-import json
+import asyncio
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'chat123'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# --- HTML DEL CHAT WEB (SOPORTE FARMACIA) ---
+# --- HTML DEL CHAT WEB ---
 HTML = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Farmacia Online</title>
+    <title>Chatroom Pro</title>
     <style>
         :root {
             --bg-main: #0b141a;
@@ -181,32 +181,21 @@ HTML = """
         }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: rgba(0, 242, 255, 0.2); border-radius: 10px; }
-        .pharmacy-badge {
-            background: #00b894;
-            color: white;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 0.7rem;
-            margin-left: 8px;
-        }
     </style>
 </head>
 <body>
     <div class="chat-container">
-        <div class="chat-header">
-            💊 Farmacia Online
-            <span class="pharmacy-badge">🏥 Atención 24/7</span>
-        </div>
+        <div class="chat-header">💬 Chatroom Pro</div>
         <div id="welcomeScreen" class="welcome-screen">
             <h3>¿Cuál es tu nombre?</h3>
-            <p>Ingresa tu nombre para atención personalizada</p>
-            <input type="text" id="nombre" class="ux-input" placeholder="Ingresa tu nombre" autofocus onkeypress="if(event.key === 'Enter') ingresarAlChat()">
+            <p>Ingresa un apodo para empezar a chatear</p>
+            <input type="text" id="nombre" class="ux-input" placeholder="Ingresa tu nombre o un apodo" autofocus onkeypress="if(event.key === 'Enter') ingresarAlChat()">
             <button class="ux-btn" onclick="ingresarAlChat()">Continuar</button>
         </div>
         <div id="chatView" class="chat-view">
             <div id="chat" class="chat-messages"></div>
             <div class="chat-input-area">
-                <input type="text" id="mensaje" placeholder="Escribe tu mensaje..." onkeypress="if(event.key === 'Enter') enviar()">
+                <input type="text" id="mensaje" placeholder="Escribe un mensaje..." onkeypress="if(event.key === 'Enter') enviar()">
                 <button class="send-btn" onclick="enviar()" aria-label="Enviar mensaje">
                     <svg viewBox="0 0 24 24"><path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"/></svg>
                 </button>
@@ -259,589 +248,135 @@ HTML = """
 def index():
     return render_template_string(HTML)
 
-# --- Evento mensajes del chat web ---
 @socketio.on("message")
 def handle_message(msg):
-    print("Mensaje en chat web:", msg)
-    socketio.emit('message', msg, broadcast=True)
+    print("Mensaje:", msg)
+    send(msg, broadcast=True)
 
 # ============================================
-# 🚀 CONFIGURACIÓN DEL BOT DE TELEGRAM - FARMACIA
+# 🤖 BOT DE TELEGRAM
 # ============================================
 
 TOKEN = "8295340694:AAF320uTXJvsCIfJN2t3PLBneoGakHRKSPo"
 
-# Base de datos del carrito
 carritos = {}
 
-# Base de datos de medicamentos (precios en Bs)
-MEDICAMENTOS = {
-    "paracetamol": {"nombre": "Paracetamol 500mg", "precio": 8.50, "presentacion": "Tabletas", "stock": 100},
-    "ibuprofeno": {"nombre": "Ibuprofeno 400mg", "precio": 10.00, "presentacion": "Tabletas", "stock": 80},
-    "aspirina": {"nombre": "Aspirina 100mg", "precio": 6.50, "presentacion": "Tabletas", "stock": 120},
-    "omeprazol": {"nombre": "Omeprazol 20mg", "precio": 12.00, "presentacion": "Cápsulas", "stock": 60},
-    "loratadina": {"nombre": "Loratadina 10mg", "precio": 9.00, "presentacion": "Tabletas", "stock": 90},
-    "amoxicilina": {"nombre": "Amoxicilina 500mg", "precio": 15.00, "presentacion": "Cápsulas", "stock": 50},
-    "metformina": {"nombre": "Metformina 850mg", "precio": 11.00, "presentacion": "Tabletas", "stock": 70},
-    "vitamina_c": {"nombre": "Vitamina C 1000mg", "precio": 7.00, "presentacion": "Efervescente", "stock": 150}
-}
-
-# ============================================
-# 🏠 COMANDO /start - MENÚ PRINCIPAL
-# ============================================
 async def start(update: Update, context):
     nombre = update.message.from_user.first_name
     mensaje = f"""
-💊 *¡Bienvenido a Farmacia Plus, {nombre}!*
+🤖 *¡Bienvenido a tu Chat, {nombre}!*
 
-Tu salud es nuestra prioridad. 
-Usa los botones de abajo para explorar:
+Usa los botones de abajo para navegar:
 
-🛍️ *Productos* - Ver catálogo de medicamentos
-💰 *Precios* - Lista de precios actualizada
-🔍 *Buscar* - Encuentra tu medicamento
-🛒 *Carrito* - Ver tu carrito de compras
 💬 *Soporte* - Atención personalizada
-⭐ *Sugerencias* - Ayúdanos a mejorar
+🛒 *Carrito* - Ver tu carrito
+💰 *Precios* - Lista de precios
 📞 *Contacto* - Información de contacto
-🕐 *Horario* - Horario de atención
-🎯 *Promociones* - Ofertas especiales
-📋 *Recetas* - Información sobre recetas
-
-*Escribe /ayuda para ver todos los comandos*
+🆘 *Ayuda* - Comandos disponibles
 """
-    
     keyboard = [
-        [InlineKeyboardButton("🛍️ Productos", callback_data="productos")],
+        [InlineKeyboardButton("💬 Soporte", callback_data="soporte")],
+        [InlineKeyboardButton("🛒 Carrito", callback_data="carrito")],
         [InlineKeyboardButton("💰 Precios", callback_data="precios")],
-        [InlineKeyboardButton("🔍 Buscar Medicamento", callback_data="buscar")],
-        [InlineKeyboardButton("🛒 Mi Carrito", callback_data="ver_carrito")],
-        [InlineKeyboardButton("💬 Soporte Farmacéutico", callback_data="soporte")],
-        [InlineKeyboardButton("📋 Recetas Médicas", callback_data="recetas")],
-        [InlineKeyboardButton("🎯 Promociones", callback_data="promociones")],
-        [InlineKeyboardButton("⭐ Sugerencias", callback_data="sugerencias")],
-        [InlineKeyboardButton("📞 Contacto", callback_data="contacto")],
-        [InlineKeyboardButton("🕐 Horario", callback_data="horario")]
+        [InlineKeyboardButton("📞 Contacto", callback_data="contacto")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
 
-# ============================================
-# 📋 COMANDO /productos - CATÁLOGO
-# ============================================
-async def productos(update: Update, context):
-    mensaje = """
-🛍️ *CATÁLOGO DE MEDICAMENTOS* 🛍️
-
-💊 *Medicamentos de venta libre:*
-• Paracetamol 500mg - Bs 8.50
-• Ibuprofeno 400mg - Bs 10.00
-• Aspirina 100mg - Bs 6.50
-• Loratadina 10mg - Bs 9.00
-• Vitamina C 1000mg - Bs 7.00
-
-💊 *Medicamentos con receta:*
-• Omeprazol 20mg - Bs 12.00
-• Amoxicilina 500mg - Bs 15.00
-• Metformina 850mg - Bs 11.00
-
-🧴 *Productos de cuidado personal:*
-• Alcohol en gel - Bs 5.00
-• Mascarillas KN95 - Bs 3.00
-• Termómetro digital - Bs 15.00
-
-📌 *Todos nuestros productos son 100% originales*
-"""
-    
-    keyboard = [
-        [InlineKeyboardButton("🔍 Buscar Medicamento", callback_data="buscar")],
-        [InlineKeyboardButton("💰 Ver Precios", callback_data="precios")],
-        [InlineKeyboardButton("🏠 Volver al Menú", callback_data="volver_menu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
-
-# ============================================
-# 💰 COMANDO /precios - LISTA DE PRECIOS
-# ============================================
-async def precios(update: Update, context):
-    mensaje = """
-💰 *LISTA DE PRECIOS* 💰
-
------------------------------
-💊 *Medicamentos:*
-
-• Paracetamol 500mg - Bs 8.50
-• Ibuprofeno 400mg - Bs 10.00
-• Aspirina 100mg - Bs 6.50
-• Omeprazol 20mg - Bs 12.00
-• Loratadina 10mg - Bs 9.00
-• Amoxicilina 500mg - Bs 15.00
-• Metformina 850mg - Bs 11.00
-• Vitamina C 1000mg - Bs 7.00
-
-🧴 *Cuidado personal:*
-• Alcohol en gel - Bs 5.00
-• Mascarillas KN95 - Bs 3.00
-• Termómetro digital - Bs 15.00
-
------------------------------
-🎯 *Ofertas especiales:*
-🔥 Ibuprofeno + Paracetamol = Bs 16.00
-🔥 Vitamina C + Mascarillas = Bs 8.00
-
-💳 *Métodos de pago:*
-• Efectivo
-• Transferencia bancaria
-• Tarjeta de crédito/débito
-• QR (Pago móvil)
-
-_*Los precios pueden cambiar sin previo aviso*_
-"""
-    
-    keyboard = [
-        [InlineKeyboardButton("🛒 Agregar al Carrito", callback_data="agregar_carrito")],
-        [InlineKeyboardButton("🎯 Ver Promociones", callback_data="promociones")],
-        [InlineKeyboardButton("🏠 Volver al Menú", callback_data="volver_menu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
-
-# ============================================
-# 🔍 COMANDO /buscar - BUSCAR MEDICAMENTO
-# ============================================
-async def buscar(update: Update, context):
-    mensaje = """
-🔍 *BUSCAR MEDICAMENTO* 🔍
-
-Escribe el nombre del medicamento que buscas:
-
-Ejemplo: `/buscar paracetamol`
-
-🔎 *Medicamentos disponibles:*
-• Paracetamol
-• Ibuprofeno
-• Aspirina
-• Omeprazol
-• Loratadina
-• Amoxicilina
-• Metformina
-• Vitamina C
-
-*También puedes escribir /productos para ver el catálogo completo*
-"""
-    await update.message.reply_text(mensaje, parse_mode='Markdown')
-
-async def buscar_medicamento(update: Update, context):
-    """Busca un medicamento específico"""
-    nombre_buscar = " ".join(context.args).lower()
-    
-    if not nombre_buscar:
-        await update.message.reply_text("❌ Escribe el nombre del medicamento.\nEjemplo: /buscar paracetamol")
-        return
-    
-    encontrados = []
-    for clave, medicamento in MEDICAMENTOS.items():
-        if nombre_buscar in clave.lower() or nombre_buscar in medicamento["nombre"].lower():
-            encontrados.append(medicamento)
-    
-    if not encontrados:
-        await update.message.reply_text(f"❌ No encontramos '{nombre_buscar}'. Usa /productos para ver el catálogo completo.")
-        return
-    
-    mensaje = f"🔍 *Resultados para '{nombre_buscar}':*\n\n"
-    for med in encontrados:
-        mensaje += f"💊 *{med['nombre']}*\n"
-        mensaje += f"💰 Precio: Bs {med['precio']:.2f}\n"
-        mensaje += f"📦 Presentación: {med['presentacion']}\n"
-        mensaje += f"📊 Stock: {med['stock']} unidades\n\n"
-    
-    keyboard = [
-        [InlineKeyboardButton("🛒 Agregar al Carrito", callback_data=f"agregar_{med['nombre']}")],
-        [InlineKeyboardButton("🏠 Volver al Menú", callback_data="volver_menu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
-
-# ============================================
-# 🛒 COMANDO /carrito - GESTIÓN DEL CARRITO
-# ============================================
-async def ver_carrito(update: Update, context):
-    user_id = str(update.effective_user.id)
-    carrito = carritos.get(user_id, [])
-    
-    if not carrito:
-        mensaje = "🛒 *Tu carrito está vacío*\n\nUsa /precios o /productos para ver los medicamentos y agregar al carrito."
-        await update.message.reply_text(mensaje, parse_mode='Markdown')
-        return
-    
-    total = 0
-    mensaje = "🛒 *TU CARRITO DE COMPRAS* 🛒\n\n"
-    for i, item in enumerate(carrito, 1):
-        mensaje += f"{i}. {item['nombre']} - Bs {item['precio']:.2f}\n"
-        total += item['precio']
-    
-    mensaje += f"\n💰 *Total: Bs {total:.2f}*"
-    
-    keyboard = [
-        [InlineKeyboardButton("🗑️ Vaciar Carrito", callback_data="vaciar_carrito")],
-        [InlineKeyboardButton("💳 Comprar Ahora", callback_data="comprar")],
-        [InlineKeyboardButton("🏠 Volver al Menú", callback_data="volver_menu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
-
-# ============================================
-# 💬 COMANDO /soporte - ATENCIÓN PERSONALIZADA
-# ============================================
 async def soporte(update: Update, context):
     mensaje = """
-💬 *SOPORTE FARMACÉUTICO* 💬
+💬 *Soporte Personalizado*
 
-¿Necesitas ayuda con algún medicamento?
-¿Tienes dudas sobre tu receta?
-¿Quieres atención personalizada?
+📌 Chatea con nosotros en tiempo real:
+🔗 https://chat-en-linea22.onrender.com
 
-📌 *Chatea con nosotros en tiempo real:*
-🔗 [Haz clic aquí para abrir el chat de soporte](https://chat-en-linea22.onrender.com)
-
-⏰ *Horario de atención:*
-Lunes a Viernes: 8:00 AM - 8:00 PM
-Sábados: 9:00 AM - 6:00 PM
-Domingos: 9:00 AM - 2:00 PM
-
-📞 *También puedes contactarnos:*
-WhatsApp: +591 77777777
-Email: farmacia@plus.com
-
-*¡Tu salud es nuestra prioridad!* 🤝
-"""
-    
-    keyboard = [
-        [InlineKeyboardButton("💬 Abrir Chat", url="https://chat-en-linea22.onrender.com")],
-        [InlineKeyboardButton("📱 WhatsApp", url="https://wa.me/59177777777")],
-        [InlineKeyboardButton("🏠 Volver al Menú", callback_data="volver_menu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
-
-# ============================================
-# 📋 COMANDO /recetas - RECETAS MÉDICAS
-# ============================================
-async def recetas(update: Update, context):
-    mensaje = """
-📋 *INFORMACIÓN SOBRE RECETAS MÉDICAS* 📋
-
-⚠️ *Importante:*
-Algunos medicamentos requieren receta médica obligatoria.
-
-💊 *Medicamentos que requieren receta:*
-• Omeprazol 20mg
-• Amoxicilina 500mg
-• Metformina 850mg
-
-📌 *¿Cómo funciona?*
-1. Envía una foto de tu receta médica
-2. Nuestro farmacéutico la revisará
-3. Confirmaremos tu pedido
-4. Puedes retirar o recibir tu medicamento
-
-📸 *Puedes enviarnos la receta por:*
-• WhatsApp: +591 77777777
-• Email: farmacia@plus.com
-• En el chat de soporte
-
-*Tu salud es lo más importante* 💚
-"""
-    
-    keyboard = [
-        [InlineKeyboardButton("💬 Enviar Receta", callback_data="soporte")],
-        [InlineKeyboardButton("📱 WhatsApp", url="https://wa.me/59177777777")],
-        [InlineKeyboardButton("🏠 Volver al Menú", callback_data="volver_menu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
-
-# ============================================
-# 🎯 COMANDO /promociones - OFERTAS ESPECIALES
-# ============================================
-async def promociones(update: Update, context):
-    mensaje = """
-🎯 *PROMOCIONES ESPECIALES* 🎯
-
-🔥 *Ofertas de la semana:*
-
-📦 *Kit Salud Plus*
-• Paracetamol + Ibuprofeno + Vitamina C
-💰 *Precio normal: Bs 25.50*
-🎉 *Precio oferta: Bs 20.00*
-(Ahorras Bs 5.50)
-
-📦 *Kit Protección*
-• Mascarillas KN95 (5 unidades)
-• Alcohol en gel
-💰 *Precio normal: Bs 20.00*
-🎉 *Precio oferta: Bs 15.00*
-(Ahorras Bs 5.00)
-
-📦 *Kit Digestivo*
-• Omeprazol + Metformina
-💰 *Precio normal: Bs 23.00*
-🎉 *Precio oferta: Bs 18.00*
-(Ahorras Bs 5.00)
-
-📅 *Válido hasta el 30 de junio de 2026*
-"""
-    
-    keyboard = [
-        [InlineKeyboardButton("🛒 Agregar Promo al Carrito", callback_data="promo_carrito")],
-        [InlineKeyboardButton("💰 Ver Precios", callback_data="precios")],
-        [InlineKeyboardButton("🏠 Volver al Menú", callback_data="volver_menu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
-
-# ============================================
-# ⭐ COMANDO /sugerencias - SUGERENCIAS
-# ============================================
-async def sugerencias(update: Update, context):
-    mensaje = """
-⭐ *¡QUEREMOS ESCUCHARTE!* ⭐
-
-Tus sugerencias nos ayudan a mejorar cada día.
-
-📝 *¿Qué te gustaría que agreguemos?*
-• Nuevos medicamentos
-• Mejores precios
-• Promociones especiales
-• Mejora en el servicio
-• Nuevos horarios
-
-Escribe tu sugerencia:
-
-Ejemplo: `/sugerencias Me gustaría que agreguen más medicamentos para ...`
+📱 WhatsApp: +591 77777777
 """
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
-async def guardar_sugerencia(update: Update, context):
-    sugerencia = " ".join(context.args)
-    if not sugerencia:
-        await update.message.reply_text("❌ Escribe tu sugerencia.\nEjemplo: /sugerencias Me gustaría ...")
+async def carrito(update: Update, context):
+    user_id = str(update.effective_user.id)
+    carrito = carritos.get(user_id, [])
+    if not carrito:
+        await update.message.reply_text("🛒 Tu carrito está vacío.")
         return
-    
-    nombre = update.message.from_user.first_name
-    mensaje = f"✅ ¡Gracias por tu sugerencia, {nombre}!\n\nTu opinión es muy importante. La revisaremos y te responderemos pronto.\n\n📝 *Tu sugerencia:* {sugerencia}"
+    total = 0
+    mensaje = "🛒 *Tu Carrito:*\n\n"
+    for item in carrito:
+        mensaje += f"• {item}\n"
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
-# ============================================
-# 📞 COMANDO /contacto
-# ============================================
+async def precios(update: Update, context):
+    mensaje = """
+💰 *Lista de Precios:*
+
+• Producto A: Bs 10.00
+• Producto B: Bs 15.00
+• Producto C: Bs 20.00
+"""
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
+
 async def contacto(update: Update, context):
     mensaje = """
-📞 *INFORMACIÓN DE CONTACTO* 📞
+📞 *Contacto:*
 
-🏪 *Farmacia Plus*
-📍 Dirección: Av. Principal #123, La Paz, Bolivia
-
-📱 *Teléfonos:*
-• +591 77777777 (WhatsApp)
-• +591 22222222 (Llamadas)
-
-📧 *Email:*
-farmacia@plus.com
-
-🌐 *Redes Sociales:*
-• Instagram: @farmaciaplus
-• Facebook: /farmaciaplus
-
-🕐 *Horario de Atención:*
-Lun - Vie: 8:00 AM - 8:00 PM
-Sáb: 9:00 AM - 6:00 PM
-Dom: 9:00 AM - 2:00 PM
-
-🚚 *Entregas a domicilio disponibles*
-Área de cobertura: Zona Central de La Paz
-
-*¡Estamos para cuidar tu salud!* 🙌
-"""
-    
-    keyboard = [
-        [InlineKeyboardButton("💬 Chat en Vivo", url="https://chat-en-linea22.onrender.com")],
-        [InlineKeyboardButton("📱 WhatsApp", url="https://wa.me/59177777777")],
-        [InlineKeyboardButton("🏠 Volver al Menú", callback_data="volver_menu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
-
-# ============================================
-# 🕐 COMANDO /horario
-# ============================================
-async def horario(update: Update, context):
-    mensaje = """
-🕐 *HORARIO DE ATENCIÓN* 🕐
-
-🏪 *Farmacia Plus*
-
-📅 *Lunes a Viernes:*
-8:00 AM - 8:00 PM
-
-📅 *Sábados:*
-9:00 AM - 6:00 PM
-
-📅 *Domingos:*
-9:00 AM - 2:00 PM
-
-🚚 *Entregas a domicilio:*
-Lun - Vie: 8:00 AM - 8:00 PM
-Sáb: 9:00 AM - 6:00 PM
-
-📌 *Emergencias las 24/7*
-Llama al: +591 77777777
-
-*¡Tu salud no espera!* 💚
-"""
-    
-    keyboard = [
-        [InlineKeyboardButton("📱 Contactar", callback_data="contacto")],
-        [InlineKeyboardButton("🏠 Volver al Menú", callback_data="volver_menu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
-
-# ============================================
-# 🆘 COMANDO /ayuda - LISTA DE COMANDOS
-# ============================================
-async def ayuda(update: Update, context):
-    mensaje = """
-📖 *LISTA DE COMANDOS DISPONIBLES*
-
-🏠 /start - Menú principal
-🛍️ /productos - Catálogo de medicamentos
-💰 /precios - Lista de precios en Bs
-🔍 /buscar [medicamento] - Buscar medicamento
-🛒 /carrito - Ver mi carrito de compras
-💬 /soporte - Atención personalizada
-📋 /recetas - Información sobre recetas
-🎯 /promociones - Ofertas especiales
-⭐ /sugerencias [texto] - Enviar sugerencia
-📞 /contacto - Información de contacto
-🕐 /horario - Horario de atención
-🆘 /ayuda - Mostrar esta ayuda
-
-🤖 *Consejo:* Usa los botones para navegar más fácil.
+📱 WhatsApp: +591 77777777
+📧 Email: contacto@chat.com
+🌐 Web: https://chat-en-linea22.onrender.com
 """
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
-# ============================================
-# 🔘 MANEJADOR DE BOTONES (Callbacks)
-# ============================================
+async def ayuda(update: Update, context):
+    mensaje = """
+📖 *Comandos disponibles:*
+
+/start - Menú principal
+/soporte - Atención personalizada
+/carrito - Ver carrito
+/precios - Lista de precios
+/contacto - Información de contacto
+/ayuda - Mostrar esta ayuda
+"""
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
+
 async def botones(update: Update, context):
     query = update.callback_query
     await query.answer()
-    
     data = query.data
-    
-    if data == "volver_menu":
-        await start(update, context)
-    
-    elif data == "productos":
-        await productos(update, context)
-    
+    if data == "soporte":
+        await soporte(update, context)
+    elif data == "carrito":
+        await carrito(update, context)
     elif data == "precios":
         await precios(update, context)
-    
-    elif data == "buscar":
-        await buscar(update, context)
-    
-    elif data == "ver_carrito":
-        await ver_carrito(update, context)
-    
-    elif data == "soporte":
-        await soporte(update, context)
-    
-    elif data == "recetas":
-        await recetas(update, context)
-    
-    elif data == "promociones":
-        await promociones(update, context)
-    
-    elif data == "sugerencias":
-        await sugerencias(update, context)
-    
     elif data == "contacto":
         await contacto(update, context)
-    
-    elif data == "horario":
-        await horario(update, context)
-    
-    elif data == "agregar_carrito":
-        user_id = str(update.effective_user.id)
-        if user_id not in carritos:
-            carritos[user_id] = []
-        carritos[user_id].append({"nombre": "Paracetamol 500mg", "precio": 8.50})
-        await query.edit_message_text("✅ Producto agregado al carrito correctamente.\n\nUsa /carrito para ver tu carrito.")
-    
-    elif data == "promo_carrito":
-        user_id = str(update.effective_user.id)
-        if user_id not in carritos:
-            carritos[user_id] = []
-        carritos[user_id].append({"nombre": "Kit Salud Plus (Oferta)", "precio": 20.00})
-        await query.edit_message_text("✅ Kit Salud Plus agregado al carrito correctamente.\n\nUsa /carrito para ver tu carrito.")
-    
-    elif data == "vaciar_carrito":
-        user_id = str(update.effective_user.id)
-        carritos[user_id] = []
-        await query.edit_message_text("🗑️ Tu carrito ha sido vaciado.")
-    
-    elif data == "comprar":
-        user_id = str(update.effective_user.id)
-        if user_id in carritos:
-            total = sum(item['precio'] for item in carritos[user_id])
-            carritos[user_id] = []
-            await query.edit_message_text(f"🎉 ¡Gracias por tu compra!\n\nTotal: Bs {total:.2f}\n\nTe contactaremos pronto para confirmar tu pedido.\n\n¿Quieres seguir comprando? Usa /start")
-        else:
-            await query.edit_message_text("❌ Tu carrito está vacío.")
 
-# ============================================
-# 🚀 INICIAR EL BOT
-# ============================================
 def run_telegram():
-    if not TOKEN or TOKEN == "TU_TOKEN_AQUI":
-        print("⚠️ No hay token de Telegram configurado.")
-        return
-    
     try:
         app_tg = Application.builder().token(TOKEN).build()
-        
-        # Comandos
         app_tg.add_handler(CommandHandler("start", start))
-        app_tg.add_handler(CommandHandler("productos", productos))
-        app_tg.add_handler(CommandHandler("precios", precios))
-        app_tg.add_handler(CommandHandler("buscar", buscar_medicamento))
-        app_tg.add_handler(CommandHandler("carrito", ver_carrito))
         app_tg.add_handler(CommandHandler("soporte", soporte))
-        app_tg.add_handler(CommandHandler("recetas", recetas))
-        app_tg.add_handler(CommandHandler("promociones", promociones))
-        app_tg.add_handler(CommandHandler("sugerencias", guardar_sugerencia))
+        app_tg.add_handler(CommandHandler("carrito", carrito))
+        app_tg.add_handler(CommandHandler("precios", precios))
         app_tg.add_handler(CommandHandler("contacto", contacto))
-        app_tg.add_handler(CommandHandler("horario", horario))
         app_tg.add_handler(CommandHandler("ayuda", ayuda))
-        
-        # Botones
         app_tg.add_handler(CallbackQueryHandler(botones))
-        
         print("🤖 Bot de Telegram iniciado correctamente")
         app_tg.run_polling()
     except Exception as e:
-        print(f"❌ Error al iniciar Telegram: {e}")
+        print(f"❌ Error en Telegram: {e}")
 
 # ============================================
-# 🚀 EJECUTAR FLASK + TELEGRAM
+# 🚀 EJECUTAR
 # ============================================
+
 if __name__ == "__main__":
+    # Iniciar Telegram en hilo separado
     thread = threading.Thread(target=run_telegram)
     thread.daemon = True
     thread.start()
     
+    # Iniciar Flask
     port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host="0.0.0.0", port=port, debug=False)
+    socketio.run(app, host="0.0.0.0", port=port, debug=False, allow_unsafe_werkzeug=True)
