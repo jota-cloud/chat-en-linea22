@@ -421,8 +421,9 @@ def run_telegram():
         # Manejador de botones (callbacks)
         application.add_handler(CallbackQueryHandler(botones))
 
-        print("🤖 Bot de Telegram iniciado correctamente")
-        application.run_polling()
+        print("🤖 Bot de Telegram iniciando...")
+        # Ejecutar el polling de forma síncrona (bloquea el hilo)
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
     except Exception as e:
         print(f"❌ Error en Telegram: {e}")
 
