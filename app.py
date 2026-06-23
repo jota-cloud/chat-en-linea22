@@ -1,16 +1,17 @@
 from flask import Flask, render_template_string
 from flask_socketio import SocketIO, send
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import os
 import threading
+import asyncio
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'chat123'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # ============================================
-# 🎨 CHAT WEB (con tu diseño original)
+# HTML del chat web (tu diseño original)
 # ============================================
 
 HTML = """
@@ -187,7 +188,7 @@ HTML = """
 </head>
 <body>
     <div class="chat-container">
-        <div class="chat-header">💬 Chatroom Pro</div>
+        <div class="chat-header">💬 Chatroom Pro 🤖</div>
         <div id="welcomeScreen" class="welcome-screen">
             <h3>¿Cuál es tu nombre?</h3>
             <p>Ingresa un apodo para empezar a chatear</p>
@@ -250,20 +251,23 @@ HTML = """
 def index():
     return render_template_string(HTML)
 
-@socketio.on("message")
-def handle_message(msg):
-    print("Mensaje en chat:", msg)
-    send(msg, broadcast=True)
-
 # ============================================
-# 🤖 BOT DE TELEGRAM
+# VARIABLES GLOBALES DEL BOT
 # ============================================
 
 TOKEN = "8295340694:AAF320uTXJvsCIfJN2t3PLBneoGakHRKSPo"
+CHAT_ID = "6496673921"  # <-- REEMPLAZA CON TU ID DE TELEGRAM
+
+# Variable global para la aplicación del bot
+telegram_app = None
 
 carritos = {}
 
-async def start(update: Update, context):
+# ============================================
+# FUNCIONES DEL BOT DE TELEGRAM
+# ============================================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nombre = update.message.from_user.first_name
     mensaje = f"""
 🤖 *¡Bienvenido a tu Chat, {nombre}!*
@@ -285,7 +289,7 @@ Usa los botones de abajo para navegar:
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
 
-async def soporte(update: Update, context):
+async def soporte(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensaje = """
 💬 *Soporte Personalizado*
 
@@ -296,7 +300,7 @@ async def soporte(update: Update, context):
 """
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
-async def carrito(update: Update, context):
+async def carrito(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     carrito = carritos.get(user_id, [])
     if not carrito:
@@ -307,7 +311,7 @@ async def carrito(update: Update, context):
         mensaje += f"• {item}\n"
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
-async def precios(update: Update, context):
+async def precios(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensaje = """
 💰 *Lista de Precios:*
 
@@ -317,7 +321,7 @@ async def precios(update: Update, context):
 """
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
-async def contacto(update: Update, context):
+async def contacto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensaje = """
 📞 *Contacto:*
 
@@ -327,7 +331,7 @@ async def contacto(update: Update, context):
 """
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
-async def ayuda(update: Update, context):
+async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensaje = """
 📖 *Comandos disponibles:*
 
@@ -340,7 +344,16 @@ async def ayuda(update: Update, context):
 """
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
-async def botones(update: Update, context):
+async def manejar_mensaje_telegram(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cuando alguien escribe un mensaje al bot (no comando), lo reenvía al chat web."""
+    texto = update.message.text
+    nombre = update.message.from_user.first_name
+    msg_para_chat = f"🤖 Bot ({nombre}): {texto}"
+    # Emitir al chat web vía SocketIO
+    socketio.emit('message', msg_para_chat, broadcast=True)
+    await update.message.reply_text("✅ Tu mensaje fue enviado al chat web.")
+
+async def botones(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -353,31 +366,76 @@ async def botones(update: Update, context):
     elif data == "contacto":
         await contacto(update, context)
 
-def run_telegram():
+# ============================================
+# FUNCIÓN PARA ENVIAR MENSAJE DEL CHAT WEB AL BOT
+# ============================================
+
+def enviar_a_telegram(mensaje):
+    """Envía un mensaje desde el chat web al bot (a un chat de Telegram específico)."""
+    if telegram_app is None or CHAT_ID == "TU_CHAT_ID":
+        print("⚠️ Bot no iniciado o CHAT_ID no configurado.")
+        return
     try:
-        app_tg = Application.builder().token(TOKEN).build()
-        app_tg.add_handler(CommandHandler("start", start))
-        app_tg.add_handler(CommandHandler("soporte", soporte))
-        app_tg.add_handler(CommandHandler("carrito", carrito))
-        app_tg.add_handler(CommandHandler("precios", precios))
-        app_tg.add_handler(CommandHandler("contacto", contacto))
-        app_tg.add_handler(CommandHandler("ayuda", ayuda))
-        app_tg.add_handler(CallbackQueryHandler(botones))
+        # Crear una tarea asíncrona para no bloquear
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(telegram_app.bot.send_message(chat_id=CHAT_ID, text=f"📱 Chat Web: {mensaje}"))
+        loop.close()
+    except Exception as e:
+        print(f"Error al enviar a Telegram: {e}")
+
+# ============================================
+# MANEJADOR DE MENSAJES DEL CHAT WEB
+# ============================================
+
+@socketio.on("message")
+def handle_message(msg):
+    print(f"Mensaje en chat web: {msg}")
+    # Reenviar al bot de Telegram si no es un mensaje del propio bot
+    if not msg.startswith("🤖 Bot:"):
+        enviar_a_telegram(msg)
+    # Retransmitir a todos los clientes del chat web
+    send(msg, broadcast=True)
+
+# ============================================
+# INICIO DEL BOT DE TELEGRAM (en hilo separado)
+# ============================================
+
+def run_telegram():
+    global telegram_app
+    try:
+        application = Application.builder().token(TOKEN).build()
+        telegram_app = application
+
+        # Comandos
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("soporte", soporte))
+        application.add_handler(CommandHandler("carrito", carrito))
+        application.add_handler(CommandHandler("precios", precios))
+        application.add_handler(CommandHandler("contacto", contacto))
+        application.add_handler(CommandHandler("ayuda", ayuda))
+
+        # Manejador de mensajes de texto (no comandos)
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, manejar_mensaje_telegram))
+
+        # Manejador de botones (callbacks)
+        application.add_handler(CallbackQueryHandler(botones))
+
         print("🤖 Bot de Telegram iniciado correctamente")
-        app_tg.run_polling()
+        application.run_polling()
     except Exception as e:
         print(f"❌ Error en Telegram: {e}")
 
 # ============================================
-# 🚀 EJECUTAR FLASK + TELEGRAM
+# PUNTO DE ENTRADA PRINCIPAL
 # ============================================
 
 if __name__ == "__main__":
-    # Iniciar bot en hilo separado
+    # Iniciar bot en un hilo separado
     telegram_thread = threading.Thread(target=run_telegram, daemon=True)
     telegram_thread.start()
 
-    # Iniciar servidor web
+    # Iniciar servidor web (Flask + SocketIO)
     port = int(os.environ.get("PORT", 5000))
     socketio.run(
         app,
