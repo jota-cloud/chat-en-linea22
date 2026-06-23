@@ -1,10 +1,10 @@
-from flask import Flask, render_template_string, request as flask_request
+from flask import Flask, render_template_string
 from flask_socketio import SocketIO, send
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import os
+import threading
 import requests
-import asyncio
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'chat123'
@@ -225,23 +225,21 @@ def index():
     return render_template_string(HTML)
 
 # ============================================
-# VARIABLES GLOBALES
+# VARIABLES GLOBALES DEL BOT
 # ============================================
 
-TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")  # ej: https://chat-en-linea22.onrender.com
+TOKEN = os.environ.get("TELEGRAM_TOKEN", "8295340694:AAHD-eu189GaPIW0CbEoAVDg3asYeuZ4XEE")  # ✅ Mejor usar variable de entorno
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "6496673921")
 
 carritos = {}
 
-# Aplicación de Telegram (global)
-telegram_app = None
-
 # ============================================
-# FUNCIÓN PARA ENVIAR MENSAJES AL BOT
+# FUNCIÓN PARA ENVIAR MENSAJES AL BOT DE TELEGRAM
+# ✅ CORREGIDO: Esta función faltaba completamente
 # ============================================
 
 def enviar_a_telegram(mensaje):
+    """Envía un mensaje del chat web al bot de Telegram usando la API REST."""
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         data = {"chat_id": CHAT_ID, "text": f"💬 Chat Web: {mensaje}"}
@@ -276,7 +274,7 @@ async def soporte(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensaje = (
         "💬 *Soporte Personalizado*\n\n"
         "📌 Chatea con nosotros en tiempo real:\n"
-        f"🔗 {WEBHOOK_URL}\n\n"
+        "🔗 https://chat-en-linea22.onrender.com\n\n"
         "📱 WhatsApp: +591 77777777"
     )
     await update.message.reply_text(mensaje, parse_mode='Markdown')
@@ -304,7 +302,7 @@ async def contacto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📞 *Contacto:*\n\n"
         "📱 WhatsApp: +591 77777777\n"
         "📧 Email: contacto@chat.com\n"
-        f"🌐 Web: {WEBHOOK_URL}"
+        "🌐 Web: https://chat-en-linea22.onrender.com"
     )
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
@@ -321,12 +319,14 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
 async def manejar_mensaje_telegram(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reenvía mensajes de Telegram al chat web."""
     texto = update.message.text
     nombre = update.message.from_user.first_name
     msg_para_chat = f"🤖 Bot ({nombre}): {texto}"
     socketio.emit('message', msg_para_chat)
     await update.message.reply_text("✅ Tu mensaje fue enviado al chat web.")
 
+# ✅ CORREGIDO: botones() ahora usa query.message en vez de update.message
 async def botones(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -336,7 +336,8 @@ async def botones(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "soporte":
         texto = (
             "💬 *Soporte Personalizado*\n\n"
-            f"📌 {WEBHOOK_URL}\n"
+            "📌 Chatea con nosotros en tiempo real:\n"
+            "🔗 https://chat-en-linea22.onrender.com\n\n"
             "📱 WhatsApp: +591 77777777"
         )
     elif data == "carrito":
@@ -355,23 +356,44 @@ async def botones(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📞 *Contacto:*\n\n"
             "📱 WhatsApp: +591 77777777\n"
             "📧 Email: contacto@chat.com\n"
-            f"🌐 Web: {WEBHOOK_URL}"
+            "🌐 Web: https://chat-en-linea22.onrender.com"
         )
+
     if texto:
-        await query.message.reply_text(texto, parse_mode='Markdown')
+        await query.message.reply_text(texto, parse_mode='Markdown')  # ✅ query.message
 
 # ============================================
-# WEBHOOK - Recibe updates de Telegram
+# HILO DEL BOT DE TELEGRAM
+# ✅ CORREGIDO: Solo una definición, usando run_polling correctamente
 # ============================================
 
-@app.route(f"/webhook", methods=["POST"])
-def webhook():
-    if telegram_app is None:
-        return "Bot no iniciado", 500
-    data = flask_request.get_json()
-    update = Update.de_json(data, telegram_app.bot)
-    asyncio.run(telegram_app.process_update(update))
-    return "ok", 200
+def run_telegram():
+    import asyncio
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        application = Application.builder().token(TOKEN).build()
+
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("soporte", soporte))
+        application.add_handler(CommandHandler("carrito", carrito_cmd))
+        application.add_handler(CommandHandler("precios", precios))
+        application.add_handler(CommandHandler("contacto", contacto))
+        application.add_handler(CommandHandler("ayuda", ayuda))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, manejar_mensaje_telegram))
+        application.add_handler(CallbackQueryHandler(botones))
+
+        async def main():
+            async with application:
+                await application.start()
+                await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+                print("🤖 Bot de Telegram iniciando...")
+                await asyncio.Event().wait()  # Mantiene el bot corriendo
+
+        loop.run_until_complete(main())
+    except Exception as e:
+        print(f"❌ Error en Telegram: {e}")
 
 # ============================================
 # MANEJADOR DE MENSAJES DEL CHAT WEB
@@ -380,9 +402,10 @@ def webhook():
 @socketio.on("message")
 def handle_message(msg):
     print(f"Mensaje en chat web: {msg}")
-
+    
+    # Detectar comandos del chat web
     texto = msg.split(": ", 1)[-1].strip() if ": " in msg else msg.strip()
-
+    
     if texto == "/start":
         respuesta = "🤖 ¡Bienvenido! Usa /ayuda para ver los comandos disponibles."
         socketio.emit('message', f"🤖 Bot: {respuesta}")
@@ -397,7 +420,7 @@ def handle_message(msg):
         )
         socketio.emit('message', f"🤖 Bot: {respuesta}")
     elif texto == "/soporte":
-        respuesta = f"💬 Soporte: {WEBHOOK_URL}\n📱 WhatsApp: +591 77777777"
+        respuesta = "💬 Soporte: https://chat-en-linea22.onrender.com\n📱 WhatsApp: +591 77777777"
         socketio.emit('message', f"🤖 Bot: {respuesta}")
     elif texto == "/precios":
         respuesta = "💰 Precios:\n• Producto A: Bs 10.00\n• Producto B: Bs 15.00\n• Producto C: Bs 20.00"
@@ -407,39 +430,16 @@ def handle_message(msg):
         socketio.emit('message', f"🤖 Bot: {respuesta}")
     elif not msg.startswith("🤖 Bot"):
         enviar_a_telegram(msg)
-
+    
     send(msg, broadcast=True)
 
 # ============================================
-# INICIO DE LA APLICACIÓN
+# PUNTO DE ENTRADA
 # ============================================
 
-async def setup_telegram():
-    global telegram_app
-    application = Application.builder().token(TOKEN).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("soporte", soporte))
-    application.add_handler(CommandHandler("carrito", carrito_cmd))
-    application.add_handler(CommandHandler("precios", precios))
-    application.add_handler(CommandHandler("contacto", contacto))
-    application.add_handler(CommandHandler("ayuda", ayuda))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, manejar_mensaje_telegram))
-    application.add_handler(CallbackQueryHandler(botones))
-
-    await application.initialize()
-    await application.start()
-
-    # Configurar webhook
-    webhook_url = f"{WEBHOOK_URL}/webhook"
-    await application.bot.set_webhook(webhook_url)
-    print(f"✅ Webhook configurado: {webhook_url}")
-
-    telegram_app = application
-
 if __name__ == "__main__":
-    # Iniciar bot con webhook
-    asyncio.run(setup_telegram())
+    telegram_thread = threading.Thread(target=run_telegram, daemon=True)
+    telegram_thread.start()
 
     port = int(os.environ.get("PORT", 5000))
     socketio.run(
