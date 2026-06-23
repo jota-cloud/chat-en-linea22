@@ -402,8 +402,35 @@ def run_telegram():
 @socketio.on("message")
 def handle_message(msg):
     print(f"Mensaje en chat web: {msg}")
-    if not msg.startswith("🤖 Bot"):
+    
+    # Detectar comandos del chat web
+    texto = msg.split(": ", 1)[-1].strip() if ": " in msg else msg.strip()
+    
+    if texto == "/start":
+        respuesta = "🤖 ¡Bienvenido! Usa /ayuda para ver los comandos disponibles."
+        socketio.emit('message', f"🤖 Bot: {respuesta}")
+    elif texto == "/ayuda":
+        respuesta = (
+            "📖 Comandos disponibles:\n"
+            "/start - Menú principal\n"
+            "/soporte - Atención personalizada\n"
+            "/precios - Lista de precios\n"
+            "/contacto - Información de contacto\n"
+            "/ayuda - Mostrar esta ayuda"
+        )
+        socketio.emit('message', f"🤖 Bot: {respuesta}")
+    elif texto == "/soporte":
+        respuesta = "💬 Soporte: https://chat-en-linea22.onrender.com\n📱 WhatsApp: +591 77777777"
+        socketio.emit('message', f"🤖 Bot: {respuesta}")
+    elif texto == "/precios":
+        respuesta = "💰 Precios:\n• Producto A: Bs 10.00\n• Producto B: Bs 15.00\n• Producto C: Bs 20.00"
+        socketio.emit('message', f"🤖 Bot: {respuesta}")
+    elif texto == "/contacto":
+        respuesta = "📞 WhatsApp: +591 77777777\n📧 Email: contacto@chat.com"
+        socketio.emit('message', f"🤖 Bot: {respuesta}")
+    elif not msg.startswith("🤖 Bot"):
         enviar_a_telegram(msg)
+    
     send(msg, broadcast=True)
 
 # ============================================
