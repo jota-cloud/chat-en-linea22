@@ -1,16 +1,18 @@
 from flask import Flask, render_template_string
 from flask_socketio import SocketIO, send
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 import os
 import threading
-import asyncio
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'chat123'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# --- HTML DEL CHAT WEB ---
+# ============================================
+# 🎨 CHAT WEB (con tu diseño original)
+# ============================================
+
 HTML = """
 <!DOCTYPE html>
 <html lang="es">
@@ -250,7 +252,7 @@ def index():
 
 @socketio.on("message")
 def handle_message(msg):
-    print("Mensaje:", msg)
+    print("Mensaje en chat:", msg)
     send(msg, broadcast=True)
 
 # ============================================
@@ -300,7 +302,6 @@ async def carrito(update: Update, context):
     if not carrito:
         await update.message.reply_text("🛒 Tu carrito está vacío.")
         return
-    total = 0
     mensaje = "🛒 *Tu Carrito:*\n\n"
     for item in carrito:
         mensaje += f"• {item}\n"
@@ -368,15 +369,20 @@ def run_telegram():
         print(f"❌ Error en Telegram: {e}")
 
 # ============================================
-# 🚀 EJECUTAR
+# 🚀 EJECUTAR FLASK + TELEGRAM
 # ============================================
 
 if __name__ == "__main__":
-    # Iniciar Telegram en hilo separado
-    thread = threading.Thread(target=run_telegram)
-    thread.daemon = True
-    thread.start()
-    
-    # Iniciar Flask
+    # Iniciar bot en hilo separado
+    telegram_thread = threading.Thread(target=run_telegram, daemon=True)
+    telegram_thread.start()
+
+    # Iniciar servidor web
     port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host="0.0.0.0", port=port, debug=False, allow_unsafe_werkzeug=True)
+    socketio.run(
+        app,
+        host="0.0.0.0",
+        port=port,
+        debug=False,
+        allow_unsafe_werkzeug=True
+    )
