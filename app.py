@@ -228,7 +228,7 @@ def index():
 # VARIABLES GLOBALES DEL BOT
 # ============================================
 
-TOKEN = os.environ.get("TELEGRAM_TOKEN", "8295340694:AAF320uTXJvsCIfJN2t3PLBneoGakHRKSPo")  # ✅ Mejor usar variable de entorno
+TOKEN = os.environ.get("TELEGRAM_TOKEN", "8295340694:AAFukUE5eRArjKVz3nIbUMvE5IOCxd2xLV0")  # ✅ Mejor usar variable de entorno
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "6496673921")
 
 carritos = {}
